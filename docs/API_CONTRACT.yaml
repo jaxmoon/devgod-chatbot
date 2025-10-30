@@ -1,0 +1,373 @@
+openapi: 3.0.3
+info:
+  title: 개발의신 Chatbot API
+  description: |
+    Gemini API 기반 소프트웨어 개발 Q&A 챗봇 API
+
+    ## 주요 기능
+    - 실시간 스트리밍 응답 (Server-Sent Events)
+    - 대화 컨텍스트 유지 (최근 10개 메시지)
+    - 소프트웨어 개발 전문 AI
+
+    ## 인증
+    현재 버전은 공개 API입니다. API 키는 서버 사이드에서만 사용됩니다.
+
+  version: 1.0.0
+  contact:
+    name: Development Team
+    email: dev@example.com
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+  - url: https://your-app.vercel.app
+    description: Production server (Vercel)
+
+tags:
+  - name: chat
+    description: Chat operations
+
+paths:
+  /api/chat:
+    post:
+      tags:
+        - chat
+      summary: Send chat message and receive streaming response
+      description: |
+        사용자 메시지를 전송하고 Gemini API로부터 실시간 스트리밍 응답을 받습니다.
+
+        ## 스트리밍 프로토콜
+        - Content-Type: `text/event-stream`
+        - 각 청크는 `data: {"text":"..."}\n\n` 형식
+        - 완료 시 `data: [DONE]\n\n` 전송
+
+        ## 컨텍스트
+        - 최대 10개의 이전 메시지를 컨텍스트로 전달
+        - 시스템 프롬프트는 자동으로 포함됨
+
+      operationId: sendChatMessage
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            examples:
+              simple:
+                summary: Simple question
+                value:
+                  message: "TypeScript의 장점은?"
+                  history: []
+              withHistory:
+                summary: With conversation history
+                value:
+                  message: "그럼 단점은?"
+                  history:
+                    - role: "user"
+                      content: "TypeScript의 장점은?"
+                    - role: "assistant"
+                      content: "TypeScript는 정적 타입을 제공하여 코드 안정성을 높입니다."
+
+      responses:
+        '200':
+          description: Streaming response started successfully
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                enum:
+                  - text/event-stream
+            Cache-Control:
+              schema:
+                type: string
+                example: no-cache
+            Connection:
+              schema:
+                type: string
+                example: keep-alive
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Server-Sent Events stream.
+                  Each event is formatted as: `data: <JSON>\n\n`
+                example: |
+                  data: {"text":"TypeScript는 "}\n\n
+                  data: {"text":"정적 타입을 "}\n\n
+                  data: {"text":"제공합니다."}\n\n
+                  data: [DONE]\n\n
+
+              examples:
+                streamingResponse:
+                  summary: Complete streaming response
+                  value: |
+                    data: {"text":"TypeScript는 다음과 같은 장점이 있습니다:\n\n"}\n\n
+                    data: {"text":"1. **정적 타입 검사**: 컴파일 시점에 타입 오류를 발견할 수 있습니다.\n"}\n\n
+                    data: {"text":"2. **IDE 지원**: 자동완성과 리팩토링이 강력합니다.\n"}\n\n
+                    data: {"text":"3. **코드 가독성**: 타입 정의로 코드 의도가 명확해집니다."}\n\n
+                    data: [DONE]\n\n
+
+        '400':
+          description: Invalid request (empty message, invalid format, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                emptyMessage:
+                  summary: Empty message
+                  value:
+                    error: "메시지가 유효하지 않습니다."
+                    code: "INVALID_MESSAGE"
+                messageTooLong:
+                  summary: Message exceeds 4000 characters
+                  value:
+                    error: "메시지가 너무 깁니다. (최대 4000자)"
+                    code: "MESSAGE_TOO_LONG"
+                invalidHistory:
+                  summary: History exceeds 10 messages
+                  value:
+                    error: "대화 히스토리가 너무 깁니다. (최대 10개)"
+                    code: "HISTORY_TOO_LONG"
+
+        '401':
+          description: Unauthorized (API key invalid or missing)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingApiKey:
+                  summary: API key not configured
+                  value:
+                    error: "서비스 구성 오류입니다."
+                    code: "CONFIG_ERROR"
+                invalidApiKey:
+                  summary: Invalid API key
+                  value:
+                    error: "API 인증 실패"
+                    code: "PERMISSION_DENIED"
+
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                rateLimitExceeded:
+                  summary: Too many requests
+                  value:
+                    error: "요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요."
+                    code: "RATE_LIMIT_EXCEEDED"
+
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                geminiApiError:
+                  summary: Gemini API failure
+                  value:
+                    error: "메시지 처리 중 오류가 발생했습니다."
+                    code: "API_ERROR"
+                internalError:
+                  summary: Unexpected error
+                  value:
+                    error: "서버 오류가 발생했습니다."
+                    code: "INTERNAL_ERROR"
+
+        '504':
+          description: Gateway timeout
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                timeout:
+                  summary: Request timeout (>30s)
+                  value:
+                    error: "응답 시간이 초과되었습니다."
+                    code: "TIMEOUT"
+
+    options:
+      tags:
+        - chat
+      summary: CORS preflight request
+      description: Handles CORS preflight for POST /api/chat
+      operationId: chatOptions
+      responses:
+        '200':
+          description: CORS headers
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+                example: "*"
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+                example: "POST, OPTIONS"
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+                example: "Content-Type"
+
+  /api/health:
+    get:
+      tags:
+        - system
+      summary: Health check endpoint
+      description: Returns server health status
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2025-01-30T12:00:00.000Z"
+
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: User's message (1-4000 characters)
+          example: "Next.js에서 API Route를 만드는 방법은?"
+
+        history:
+          type: array
+          maxItems: 10
+          description: Conversation history (max 10 messages)
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+          example:
+            - role: "user"
+              content: "안녕하세요"
+            - role: "assistant"
+              content: "안녕하세요! 무엇을 도와드릴까요?"
+
+    ChatMessage:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum:
+            - user
+            - assistant
+          description: Message sender (user or assistant)
+          example: "user"
+
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          description: Message content
+          example: "TypeScript를 사용하는 이유는?"
+
+    StreamChunk:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          description: Chunk of streaming response
+          example: "TypeScript는 정적 타입을 제공합니다."
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message (Korean)
+          example: "메시지가 유효하지 않습니다."
+
+        code:
+          type: string
+          description: Machine-readable error code
+          enum:
+            - INVALID_MESSAGE
+            - MESSAGE_TOO_LONG
+            - HISTORY_TOO_LONG
+            - CONFIG_ERROR
+            - PERMISSION_DENIED
+            - RATE_LIMIT_EXCEEDED
+            - API_ERROR
+            - INTERNAL_ERROR
+            - TIMEOUT
+          example: "INVALID_MESSAGE"
+
+        details:
+          type: object
+          description: Additional error details (optional)
+          additionalProperties: true
+          example:
+            field: "message"
+            reason: "Message cannot be empty"
+
+  parameters:
+    MessageParam:
+      name: message
+      in: query
+      description: User message
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 4000
+
+  examples:
+    BasicChatRequest:
+      summary: Basic chat request
+      value:
+        message: "React Hook의 장점은?"
+
+    ChatWithHistory:
+      summary: Chat with conversation history
+      value:
+        message: "그럼 단점은 뭐야?"
+        history:
+          - role: "user"
+            content: "React Hook의 장점은?"
+          - role: "assistant"
+            content: "React Hook은 클래스 컴포넌트 없이도 상태 관리를 할 수 있게 해줍니다."
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        API key for authentication (server-side only).
+        Not required for client requests.
+
+security: []  # No authentication required for client requests
+
+externalDocs:
+  description: Project Documentation
+  url: https://github.com/your-repo/chatbot/blob/main/docs/TECHSPEC.md
