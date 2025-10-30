@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Noto_Sans_KR } from 'next/font/google'
 import './globals.css'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 const notoSans = Noto_Sans_KR({
   subsets: ['latin'],
@@ -20,7 +21,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${notoSans.variable} font-sans bg-white text-slate-900`}>
-        {children}
+        <ErrorBoundary>{children}</ErrorBoundary>
       </body>
     </html>
   )

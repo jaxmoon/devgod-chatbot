@@ -1,8 +1,17 @@
+import withBundleAnalyzer from '@next/bundle-analyzer';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  swcMinify: true,
   compress: true,
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'react-markdown', 'react-syntax-highlighter'],
+  },
+  images: {
+    formats: ['image/avif', 'image/webp'],
+  },
   async headers() {
     return [
       {
@@ -26,8 +35,12 @@ const nextConfig = {
           },
         ],
       },
-    ]
+    ];
   },
-}
+};
 
-export default nextConfig
+const withAnalyzer = withBundleAnalyzer({
+  enabled: process.env.ANALYZE === 'true',
+});
+
+export default withAnalyzer(nextConfig);
