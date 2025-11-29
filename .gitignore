@@ -29,3 +29,6 @@ test-results
 # IDE
 .vscode
 .idea
+
+# Firebase
+.firebase/
